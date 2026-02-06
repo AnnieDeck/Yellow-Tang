@@ -1,0 +1,933 @@
+---
+title: "Yellowtang Clean Script"
+author: "Annie Deck"
+date: "2026-01-09"
+output: 
+ html_document:
+  toc: true
+  toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load packages
+pacman::p_load(ggplot2, phyloseq, treemapify, tidyverse, dplyr, vegan, sigclust2, dendextend, pairwiseAdonis, patchwork, cowplot, microbiome)
+
+```
+
+```{r}
+# set working director
+setwd("~/Desktop/Chapter3_data/Ch3_highread_all")
+```
+
+# Script Set-Up
+
+```{r}
+##bring in data 
+
+##ASV (feature) table
+asv_table_ch3 = read.csv("feature-table.csv", sep=",", row.names=1)
+asv_table_ch3 = as.matrix(asv_table_ch3)
+
+##Taxonomy 
+Taxonomy_table_ch3 = read.csv("taxonomy.csv", sep=",", row.names=1)
+Taxonomy_table_ch3 = as.matrix(Taxonomy_table_ch3)
+
+                  
+##Metadata
+##fill=TRUE fills character fields with empty strings instead of NAs
+##header=TRUE tells R that the first row of the file contains the variable names 
+Metadata_table_ch3 = read.csv("Ch3Metadata.csv", header=TRUE, fill=TRUE)
+
+##takes first column and makes it the row name
+rownames(Metadata_table_ch3) <- Metadata_table_ch3$SampleID
+Metadata_table_ch3$SampleID
+
+##Tree
+phy_tree = read_tree("tree.nwk")
+```
+
+```{r}
+#Creating phyloseq object
+
+##import as phyloseq objects
+OTU_phy_object = otu_table(asv_table_ch3, taxa_are_rows = TRUE)
+TAX_phy_object = tax_table(Taxonomy_table_ch3)
+META_phy_object = sample_data(Metadata_table_ch3)
+
+##check metadata
+sample_names(META_phy_object)
+colnames(META_phy_object)
+
+#make sure sample names match *exactly*
+sample_names(META_phy_object)
+sample_names(OTU_phy_object)
+
+##create the phyloseq object
+physeq_ch3 = phyloseq(OTU_phy_object, TAX_phy_object, phy_tree)
+
+physeq_ch3_meta = merge_phyloseq(physeq_ch3, META_phy_object)
+ntaxa(physeq_ch3_meta)
+nsamples(physeq_ch3_meta)
+
+```
+
+# Quality Control 
+
+```{r}
+##Cleaning taxonomy
+
+##Create table, which shows the number of features for each tax rank
+# 1720 bacteria, 18 archaea, and 5 unassigned 
+table(tax_table(physeq_ch3_meta)[, "Domain"], exclude = NULL)
+
+##remove ASVs unassigned at domain
+physeq_ch3_cleaned_domain <- subset_taxa(physeq_ch3_meta, !is.na(Domain) & !Domain %in% c("", "Unassigned")) 
+
+#double check to make sure that worked- looks good
+table(tax_table(physeq_ch3_cleaned_domain)[, "Domain"], exclude = NULL)
+
+#now look at all phylums
+table(tax_table(physeq_ch3_meta)[, "Phylum"], exclude = NULL)
+
+##now checking looking at # of ASVs (1,738) & # of unique phyla (24)
+physeq_phyla <- tax_glom(physeq_ch3_cleaned_domain, taxrank= "ASV_ID_2")
+ntaxa(physeq_phyla)
+
+length(unique(na.omit(tax_table(physeq_ch3_cleaned_domain)[, "Phylum"])))
+
+##features (ASVs) with ambiguous phylum annotation are removed 
+physeq_ch3_cleaned <- subset_taxa(physeq_ch3_cleaned_domain, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+
+##1,523 ASVs now (215 ASVs that were not assigned at phylum level removed) & 23 phyla
+physeq_phyla_cleaned <- tax_glom(physeq_ch3_cleaned, taxrank= "ASV_ID_2")
+ntaxa(physeq_phyla_cleaned)
+
+length(unique(tax_table(physeq_ch3_cleaned)[, "Phylum"]))
+
+##pull out the tax table to do some re-naming
+Taxonomy_table_ch3 <- data.frame(tax_table(physeq_ch3_cleaned))
+
+```
+
+
+```{r}
+##Now cleaning taxonomy names (many ASVs are unassigned at the lower taxonomic levels)
+
+
+##using taxonomy table we pulled out above (Taxonomy_table_ch3
+##change columns to characters
+for (i in 1:8){ Taxonomy_table_ch3[,i] <- as.character(Taxonomy_table_ch3[,i])}
+
+Taxonomy_table_ch3[is.na(Taxonomy_table_ch3)] <- ""
+
+
+##fills in missing taxonomic ranks with last known rank
+for (i in 1:nrow(Taxonomy_table_ch3)){
+  if (Taxonomy_table_ch3[i,2] == ""){
+    kingdom <- paste("Kingdom_", Taxonomy_table_ch3[i,1], sep = "")
+    Taxonomy_table_ch3[i, 2:7] <- kingdom
+  } else if (Taxonomy_table_ch3[i,3] == ""){
+    phylum <- paste("Phylum_", Taxonomy_table_ch3[i,2], sep = "")
+    Taxonomy_table_ch3[i, 3:7] <- phylum
+  } else if (Taxonomy_table_ch3[i,4] == ""){
+    class <- paste("Class_", Taxonomy_table_ch3[i,3], sep = "")
+    Taxonomy_table_ch3[i, 4:7] <- class
+  } else if (Taxonomy_table_ch3[i,5] == ""){
+    order <- paste("Order_", Taxonomy_table_ch3[i,4], sep = "")
+    Taxonomy_table_ch3[i, 5:7] <- order
+  } else if (Taxonomy_table_ch3[i,6] == ""){
+    family <- paste("Family_", Taxonomy_table_ch3[i,5], sep = "")
+    Taxonomy_table_ch3[i, 6:7] <- family
+  } else if (Taxonomy_table_ch3[i,7] == ""){
+    Taxonomy_table_ch3$Species[i] <- paste("Genus",Taxonomy_table_ch3$Genus[i], sep = "_")
+  }
+}
+
+
+##exporting it to look at in excel- looks good
+#write.csv(Taxonomy_table_ch3, "taxtable_clean.csv")
+
+
+##if "uncultured" replace with last known rank
+for (i in 1:nrow(Taxonomy_table_ch3)){
+  if (Taxonomy_table_ch3[i,2] == "p__uncultured"){
+    kingdom <- paste("Kingdom_", Taxonomy_table_ch3[i,1], sep = "")
+    Taxonomy_table_ch3[i, 2:7] <- kingdom
+  } else if (Taxonomy_table_ch3[i,3] == "c__uncultured"){
+    phylum <- paste("Phylum_", Taxonomy_table_ch3[i,2], sep = "")
+    Taxonomy_table_ch3[i, 3:7] <- phylum
+  } else if (Taxonomy_table_ch3[i,4] == "o__uncultured"){
+    class <- paste("Class_", Taxonomy_table_ch3[i,3], sep = "")
+    Taxonomy_table_ch3[i, 4:7] <- class
+  } else if (Taxonomy_table_ch3[i,5] == "f__uncultured"){
+    order <- paste("Order_", Taxonomy_table_ch3[i,4], sep = "")
+    Taxonomy_table_ch3[i, 5:7] <- order
+  } else if (Taxonomy_table_ch3[i,6] == "g__uncultured"){
+    family <- paste("Family_", Taxonomy_table_ch3[i,5], sep = "")
+    Taxonomy_table_ch3[i, 6:7] <- family
+  } else if (Taxonomy_table_ch3[i,7] == "s__uncultured_bacterium"){
+    Taxonomy_table_ch3$Species[i] <- paste("Genus",Taxonomy_table_ch3$Genus[i], sep = "_")
+  }
+}
+
+##put updated tax table back into phyloseq object
+tax_table(physeq_ch3_cleaned) <- as.matrix(Taxonomy_table_ch3)
+
+##make sure that worked- looks good
+head(tax_table(physeq_ch3_cleaned))
+
+
+```
+
+```{r}
+##Removing chloroplast and mitochondria ASVs
+NoMito <- subset_taxa(physeq_ch3_cleaned, !Family %in% c("f__Mitochondria"))
+NoChloroNoMito <- subset_taxa(NoMito, !Order %in% c("o__Chloroplast"))
+
+##12 ASVs removed
+ntaxa(NoChloroNoMito)
+ntaxa(physeq_ch3_cleaned)
+
+```
+
+```{r}
+##transform sample counts to relative abundance
+rel_abundances = transform_sample_counts(NoChloroNoMito, function(OTU) OTU/sum(OTU))
+ntaxa(rel_abundances)
+
+
+##using psmelt to turn my phyloseq object into a data frame
+mdf_2 = psmelt(rel_abundances)
+names(mdf_2)
+```
+
+# Post-Cleaning Summary Stats
+
+```{r}
+                               ##read depth##
+##look at read depth for all 46 samples
+sample_sums(NoChloroNoMito)
+
+##average read depth across all samples- 62,681.37
+mean(phyloseq::sample_sums(NoChloroNoMito))
+
+##sd of read depth across all samples- 25,962.81
+sd(phyloseq::sample_sums(NoChloroNoMito))
+
+##total reads across all samples 2,883,343
+sum(phyloseq::sample_sums(NoChloroNoMito))
+
+                            ##taxonomy counts##
+##Bacteria 1,495 ASVs & Archaea 16 ASVs
+table(tax_table(NoChloroNoMito)[, "Domain"], exclude = NULL)
+
+##looking at number of unique genera- 246
+length(unique(na.omit(tax_table(NoChloroNoMito)[, "Genus"])))
+
+```
+
+
+# Figures
+
+## Tree-maps (Fig. 4 A&B)
+
+```{r}
+##starting with Phylum level
+
+##treemap data prep - aggregate to Phylum level
+phylum_glom <- tax_glom(rel_abundances, taxrank = "Phylum")
+
+##melt and summarize by sample 
+phylum_summary <- phylum_glom %>% 
+  psmelt() %>% 
+  filter(SampleType == "Larvae") %>%  # Filter for larvae only
+  group_by(SampleID, Timepoint, Phylum) %>% 
+  summarise(sum = sum(Abundance), .groups = 'drop')
+
+##calc mean abundance across replicates (n=3) for each timepoint
+phylum_mean <- phylum_summary %>% 
+  group_by(Timepoint, Phylum) %>%  # Removed SampleType since we only have Larvae
+  summarise(mean = mean(sum), .groups = 'drop')
+
+##filter for phyla >1% relative abundance
+phylum_filtered <- phylum_mean %>% 
+  filter(mean > 0.001)
+
+##make names prettier 
+phylum_renamed <- phylum_filtered %>% 
+  mutate(Phylum = case_when(
+    Phylum == "p__Actinobacteriota" ~ "Actinobacteriota",
+    Phylum == "p__Bacteroidota" ~ "Bacteroidota",
+    Phylum == "p__Bdellovibrionota" ~ "Bdellovibrionota",
+    Phylum == "p__Campilobacterota" ~ "Campilobacterota",
+    Phylum == "p__Chloroflexi" ~ "Chloroflexi",
+    Phylum == "p__Crenarchaeota" ~ "Crenarchaeota",
+    Phylum == "p__Desulfobacterota" ~ "Desulfobacterota",
+    Phylum == "p__Firmicutes" ~ "Firmicutes",
+    Phylum == "p__Fusobacteriota" ~ "Fusobacteriota",
+    Phylum == "p__Halobacterota" ~ "Halobacterota",
+    Phylum == "p__Myxococcota" ~ "Myxococcota",
+    Phylum == "p__Nitrospirota" ~ "Nitrospirota",
+    Phylum == "p__Planctomycetota" ~ "Planctomycetota",
+    Phylum == "p__Proteobacteria" ~ "Proteobacteria",
+    TRUE ~ Phylum  # Keep original if not matched
+  ))
+
+##assign colors to each phylum
+phylum_colors_custom <- c(
+  "Proteobacteria" = "#9e9ac8",        # Light purple (dominant)
+  "Bacteroidota" = "#c51b8a",          # Magenta/pink
+  "Actinobacteriota" = "#fa9fb5",      # Light pink
+  "Fusobacteriota" = "#238b45",        # Dark green
+  "Firmicutes" = "#c7e9b4",            # Light green
+  "Planctomycetota" = "#253494",       # Dark blue
+  "Halobacterota" = "#99d8c9",         # Light teal/cyan
+  "Nitrospirota" = "#02818a",          # Teal
+  "Myxococcota" = "#c6dbef",           # Light blue
+  "Crenarchaeota" = "#feb24c",         # Orange
+  "Campilobacterota" = "#fdbb84",      # Light orange
+  "Chloroflexi" = "#ef3b2c",           # Red/orange
+  "Desulfobacterota" = "#cc4c02",      # Brown/orange
+  "Bdellovibrionota" = "#ffffcc"       # Pale yellow
+)
+
+##add days post-hatch column for labeling and convert to factor so they are in the right order
+phylum_renamed <- phylum_renamed %>%
+  mutate(Timepoint_label = case_when(
+    Timepoint == 1 ~ "2 dph",
+    Timepoint == 2 ~ "5 dph",
+    Timepoint == 3 ~ "8 dph",
+    Timepoint == 4 ~ "13 dph",
+    Timepoint == 5 ~ "20 dph",
+    Timepoint == 6 ~ "36 dph",
+    Timepoint == 7 ~ "55 dph",
+    Timepoint == 8 ~ "76 dph",
+    TRUE ~ as.character(Timepoint)
+  )) %>%
+  mutate(Timepoint_label = factor(Timepoint_label, 
+                                   levels = c("2 dph", "5 dph", "8 dph", "13 dph", 
+                                             "20 dph", "36 dph", "55 dph", "76 dph")))
+
+##plotting
+Treemap_phylum_plot <- ggplot(phylum_renamed, aes(area = mean, fill = Phylum, subgroup = Phylum)) +
+  geom_treemap(color = "white", size = 2) +
+  geom_treemap_subgroup_border(colour = "white", size = 3) +
+  facet_wrap(~ Timepoint_label, nrow = 1) +  
+  theme_minimal() +
+  theme(
+    strip.background = element_blank(), 
+    strip.text = element_text(color = "black", face = "bold", size = 15),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size= 13),
+    panel.spacing = unit(0.5, "lines")) +
+  scale_fill_manual(values = phylum_colors_custom)
+Treemap_phylum_plot
+
+```
+
+
+```{r}
+##phylum treemap summary stats
+phylum_table <- phylum_renamed %>%
+  mutate(Percent = round(mean * 100, 2)) %>%
+  select(Timepoint_label, Phylum, Percent) %>%
+  pivot_wider(names_from = Timepoint_label, values_from = Percent)
+
+print(phylum_table)
+```
+
+
+
+```{r}
+## Now repeating at the Genus level 
+## this code will take the genera that are >3% of the mean relative abundance at each timepoint and put the rest into an "other" category
+
+## Treemap data prep - aggregate to Genus level
+genus_glom <- tax_glom(rel_abundances, taxrank = "Genus")
+
+## Melt and summarize by sample
+genus_summary <- genus_glom %>% 
+  psmelt() %>% 
+  filter(SampleType == "Larvae") %>%
+  group_by(SampleID, Timepoint, Genus) %>% 
+  summarise(sum = sum(Abundance), .groups = 'drop')
+
+## Calculate mean abundance across replicates for each timepoint
+genus_mean <- genus_summary %>% 
+  group_by(Timepoint, Genus) %>%
+  summarise(mean = mean(sum), .groups = 'drop')
+
+## Filter per timepoint: keep if >3% at THAT timepoint, otherwise "Other"
+genus_categorized <- genus_mean %>%
+  mutate(Genus_category = ifelse(mean > 0.03, Genus, "Other"))
+
+## Sum up all "Other" genera by timepoint
+genus_final <- genus_categorized %>%
+  group_by(Timepoint, Genus_category) %>%
+  summarise(mean = sum(mean), .groups = 'drop')
+
+## Clean up genus names with custom labels
+genus_renamed <- genus_final %>%
+  mutate(Genus_clean = case_when(
+    Genus_category == "g__Alteromonas" ~ "Alteromonas",
+    Genus_category == "g__Colwellia" ~ "Colwellia",
+    Genus_category == "g__Fusobacterium" ~ "Fusobacterium",
+    Genus_category == "g__Marinicella" ~ "Marinicella",
+    Genus_category == "g__Methylotenera" ~ "Methylotenera",
+    Genus_category == "g__NS2b_marine_group" ~ "NS2b_marine_group",
+    Genus_category == "g__Odoribacter" ~ "Odoribacter",
+    Genus_category == "g__Planktomarina" ~ "Planktomarina",
+    Genus_category == "g__Pseudoalteromonas" ~ "Pseudoalteromonas",
+    Genus_category == "g__Pseudomonas" ~ "Pseudomonas",
+    Genus_category == "g__Romboutsia" ~ "Romboutsia",
+    Genus_category == "g__SUP05_cluster" ~ "SUP05_cluster",
+    Genus_category == "g__Vibrio" ~ "Vibrio",
+    Genus_category == "Family_f__Alteromonadaceae" ~ "Unidentified Alteromonadaceae (Family)",
+    Genus_category == "Family_f__Flavobacteriaceae" ~ "Unidentified Flavobacteriaceae (Family)",
+    Genus_category == "Family_f__Rhodobacteraceae" ~ "Unidentified Rhodobacteraceae (Family)",
+    Genus_category == "Family_f__Sphingobacteriaceae" ~ "Unidentified Sphingobacteriaceae (Family)",
+    Genus_category == "Class_c__Bacteroidia" ~ "Unidentified Bacteroidia (Class)",
+    Genus_category == "Class_c__Gammaproteobacteria" ~ "Unidentified Gammaproteobacteria (Class)",
+    Genus_category == "Phylum_p__Proteobacteria" ~ "Unidentified Proteobacteria (Phylum)",
+    Genus_category == "Other" ~ "Other",
+    TRUE ~ Genus_category
+  )) %>%
+  mutate(Timepoint_label = case_when(
+    Timepoint == 1 ~ "2 dph",
+    Timepoint == 2 ~ "5 dph",
+    Timepoint == 3 ~ "8 dph",
+    Timepoint == 4 ~ "13 dph",
+    Timepoint == 5 ~ "20 dph",
+    Timepoint == 6 ~ "36 dph",
+    Timepoint == 7 ~ "55 dph",
+    Timepoint == 8 ~ "76 dph",
+    TRUE ~ as.character(Timepoint)
+  )) %>%
+  mutate(Timepoint_label = factor(Timepoint_label, 
+                                   levels = c("2 dph", "5 dph", "8 dph", "13 dph", 
+                                             "20 dph", "36 dph", "55 dph", "76 dph")))
+
+##check what genera we have
+unique(genus_renamed$Genus_clean) %>% sort()
+
+##assign colors
+genus_colors_custom <- c(
+  "Alteromonas" = "#fa9fb5",
+  "Colwellia" = "#c51b8a",
+  "Fusobacterium" = "#fdbb84",
+  "Marinicella" = "#ef3b2c",
+  "Methylotenera" = "#ffffcc",
+  "NS2b_marine_group" = "#feb24c",
+  "Odoribacter" = "#cc4c02",
+  "Planktomarina" = "#67000d",
+  "Pseudoalteromonas" = "#c7e9b4",
+  "Pseudomonas" = "palegreen2",
+  "Romboutsia" = "yellow4",
+  "SUP05_cluster" = "#238b45",
+  "Unidentified Alteromonadaceae (Family)" = "#c6dbef",
+  "Unidentified Bacteroidia (Class)" = "#99d8c9",
+  "Unidentified Gammaproteobacteria (Class)" = "#02818a",
+  "Unidentified Proteobacteria (Phylum)" = "#253494",
+  "Unidentified Rhodobacteraceae (Family)" = "#1d91c0",
+  "Unidentified Sphingobacteriaceae (Family)" = "#54278f",
+  "Unidentified Flavobacteriaceae (Family)" = "#8DA0CB",
+  "Vibrio" = "#9e9ac8",
+  "Other" = "#bdbdbd"
+)
+
+
+## Automatically get all unique genera and put "Other" last
+all_genera <- setdiff(sort(unique(genus_renamed$Genus_clean)), "Other")
+genus_order <- c(all_genera, "Other")
+
+genus_renamed <- genus_renamed %>%
+  mutate(Genus_clean = factor(Genus_clean, levels = genus_order))
+
+
+##plot
+Treemap_genus_plot <- ggplot(genus_renamed, aes(area = mean, fill = Genus_clean, subgroup = Genus_clean)) +
+  geom_treemap(color = "white", size = 2) +
+  geom_treemap_subgroup_border(colour = "white", size = 3) +
+  facet_wrap(~ Timepoint_label, nrow = 1) +
+  theme_minimal() +
+  theme(
+    strip.background = element_blank(), 
+    strip.text = element_blank(),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size= 13),
+    panel.spacing = unit(0.5, "lines")) +
+  scale_fill_manual(values = genus_colors_custom, name = "Genus") 
+
+Treemap_genus_plot
+
+```
+
+
+```{r}
+genus_table <- genus_renamed %>%
+  mutate(Percent = round(mean * 100, 2)) %>%
+  select(Timepoint_label, Genus_clean, Percent) %>%
+  pivot_wider(names_from = Timepoint_label, values_from = Percent, values_fill = 0)
+
+print(genus_table)
+```
+
+
+```{r}
+##combine treemap figures 
+Treemap_combined_plot <- plot_grid(Treemap_phylum_plot, Treemap_genus_plot, 
+                           ncol = 1,  #stack vertically 
+                           rel_heights = c(1, 1.12))
+
+Treemap_combined_plot
+
+Treemap_combined_plot <- Treemap_combined_plot + theme(plot.margin = margin(4, 2.5, 2.5, 2.5, "cm"))
+
+Treemap_combined_plot
+
+##exporting figure
+ggsave("Figure_4.png", plot = Treemap_combined_plot, width = 12, height = 8.5, units = "in", dpi = 300)
+```
+
+
+
+## NMDS (Fig. 3A)
+
+```{r}
+##only larvae first
+##first subset for just larvae samples
+physeq_larvae <- subset_samples(
+  NoChloroNoMito,
+  SampleType == "Larvae")
+
+##remove ASVs not present in larval samples (0) or very rare to reduce noise
+physeq_larvae <- prune_taxa(taxa_sums(physeq_larvae) > 10, physeq_larvae)
+
+##next do CLR transformation
+CLR_larvae <- microbiome::transform(physeq_larvae, transform = "clr")
+
+##convert CLR_larvae to df
+CLR_larvae_df <- as(sample_data(CLR_larvae), "data.frame")
+
+##fill in Timepoint2 column
+CLR_larvae_df$Timepoint2 <- case_when(
+  CLR_larvae_df$Timepoint == 1 ~ "2",
+  CLR_larvae_df$Timepoint == 2 ~ "5",
+  CLR_larvae_df$Timepoint == 3 ~ "8",
+  CLR_larvae_df$Timepoint == 4 ~ "13",
+  CLR_larvae_df$Timepoint == 5 ~ "20",
+  CLR_larvae_df$Timepoint == 6 ~ "36",
+  CLR_larvae_df$Timepoint == 7 ~ "55",
+  CLR_larvae_df$Timepoint == 8 ~ "76",
+  TRUE ~ NA_character_)
+
+##make timepoint2 a factor and order correctly
+CLR_larvae_df$Timepoint2 <- factor(
+  CLR_larvae_df$Timepoint2,
+  levels = c("2", "5", "8", "13",
+    "20", "36", "55", "76"))
+
+##convert back to phyloseq object
+sample_data(CLR_larvae) <- CLR_larvae_df
+
+## 4. NMDS ordination (Euclidean)
+set.seed(123)  # for reproducibility
+NMDS_larvae_ord <- ordinate(
+  CLR_larvae,
+  method = "NMDS",
+  distance = "euclidean"
+)
+
+stress_val <- round(NMDS_larvae_ord$stress, 3)
+
+NMDS_taxa_color = c("#fa9fb5", "#c51b8a", "#ef3b2c", "#feb24c", "yellow4","#02818a", "#1d91c0", "#253494")
+
+NMDS_figure_larvae <- plot_ordination(CLR_larvae, NMDS_larvae_ord, type = "samples", color = "Timepoint2") +
+  annotate("text", x = Inf, y = Inf, label = paste0("Stress = ", stress_val),hjust = 1.1, vjust= 1.5, fontface = "bold", size=5) + 
+  geom_point(size=4.2) +
+  scale_color_manual(values = NMDS_taxa_color, name= "Days Post-Hatch (dph)") +
+  theme_bw() +
+  theme(
+    axis.title = element_text(size = 12),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12))
+
+NMDS_figure_larvae
+
+##exporting figure
+#ggsave("NMDS_figure.pdf", plot = NMDS_figure_larvae, width = 6, height = 5, units = "in", dpi = 300)
+```
+
+```{r}
+##now all sample types
+#next do CLR transformation
+CLR_all_samples <- microbiome::transform(NoChloroNoMito, transform = "clr")
+
+##convert CLR_larvae to df
+CLR_all_df <- as(sample_data(CLR_all_samples), "data.frame")
+
+##fill in Timepoint2 column
+CLR_all_df$Timepoint2 <- case_when(
+  CLR_all_df$Timepoint == 1 ~ "2",
+  CLR_all_df$Timepoint == 2 ~ "5",
+  CLR_all_df$Timepoint == 3 ~ "8",
+  CLR_all_df$Timepoint == 4 ~ "13",
+  CLR_all_df$Timepoint == 5 ~ "20",
+  CLR_all_df$Timepoint == 6 ~ "36",
+  CLR_all_df$Timepoint == 7 ~ "55",
+  CLR_all_df$Timepoint == 8 ~ "76",
+  TRUE ~ NA_character_)
+
+##make timepoint2 a factor and order correctly
+CLR_all_df$Timepoint2 <- factor(
+  CLR_all_df$Timepoint2,
+  levels = c("2", "5", "8", "13",
+    "20", "36", "55", "76"))
+
+##convert back to phyloseq object
+sample_data(CLR_all_samples) <- CLR_all_df
+
+## 4. NMDS ordination (Euclidean)
+set.seed(123)  # for reproducibility
+NMDS_all_ord <- ordinate(
+  CLR_all_samples,
+  method = "NMDS",
+  distance = "euclidean")
+
+stress_val <- round(NMDS_all_ord$stress, 3)
+
+NMDS_taxa_color = c("#fa9fb5", "#c51b8a", "#ef3b2c", "#feb24c", "yellow4","#02818a", "#1d91c0", "#253494")
+
+NMDS_figure_all <- plot_ordination(CLR_all_samples, NMDS_all_ord, type = "samples", color = "Timepoint2", shape= "SampleType") +
+  annotate("text", x = Inf, y = Inf, label = paste0("Stress = ", stress_val),hjust = 1.1, vjust= 1.5, fontface = "bold", size=5) + 
+  geom_point(size=4.5) +
+  scale_color_manual(values = NMDS_taxa_color, name= "Days Post-Hatch (dph)") +
+  theme_bw() +
+  theme(
+    axis.title = element_text(size = 12),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12)) + 
+  stat_ellipse(aes(group = Timepoint2), linetype = 2)
+
+NMDS_figure_all
+
+NMDS_figure_all <- NMDS_figure_all + theme(plot.margin = margin(4, 2.5, 2.5, 2.5, "cm"))
+
+NMDS_figure_all
+
+ggsave("Figure_S1.pdf", plot = NMDS_figure_all, width = 10, height = 8, units = "in", dpi = 300)
+
+```
+
+
+## Dendrogram (Fig. 3B)
+
+```{r}
+##starting with CLR transformed larvae only dataframe made in NMDS chunk above (CLR_larvae)
+
+##first subset for just larvae samples
+physeq_larvae <- subset_samples(
+  NoChloroNoMito,
+  SampleType == "Larvae")
+
+#1,511 ASVs
+ntaxa(physeq_larvae)
+
+##remove ASVs not present in larval samples (0) or very rare to reduce noise (same as I did above with NMDS)
+physeq_larvae_filtered <- prune_taxa(taxa_sums(physeq_larvae) > 10, physeq_larvae)
+
+#1,165
+ntaxa(physeq_larvae_filtered)
+
+##next do CLR transformation
+CLR_larvae <- microbiome::transform(physeq_larvae_filtered, transform = "clr")
+
+##convert to matrix
+otutable_shc_larvae<-as.matrix(as.data.frame(t(otu_table(CLR_larvae))))
+
+##run clustering
+shc_result_larvae <- shc(otutable_shc_larvae, metric="euclidean", linkage="ward.D2", n_min=10)
+
+##plot
+dendrogram_fig <-plot(shc_result_larvae)
+
+dendrogram_fig
+
+##look at p-value
+shc_result_larvae$p_norm[1]
+
+```
+
+```{r}
+library(dendextend)
+
+# Your existing code
+CLR_larvae <- microbiome::transform(physeq_larvae_filtered, transform = "clr")
+otutable_shc_larvae <- as.matrix(as.data.frame(t(otu_table(CLR_larvae))))
+shc_result_larvae <- shc(otutable_shc_larvae, metric="euclidean", linkage="ward.D2", n_min=10)
+
+# Extract the hclust object from shc result
+hc <- shc_result_larvae$hc_dat
+
+# Convert to dendrogram and sort by labels
+dend <- as.dendrogram(hc)
+dend_sorted <- sort(dend, type = "labels")
+
+# Convert back to hclust
+hc_sorted <- as.hclust(dend_sorted)
+
+# Replace the hclust object in shc_result
+shc_result_larvae$hc_dat <- hc_sorted
+
+# Now plot with sorted order
+dendrogram_fig <- plot(shc_result_larvae)
+
+dendrogram_fig
+```
+
+
+```{r}
+##combine NMDS & dendrogram into one figure 
+NMDS_combined_plot <- plot_grid(NMDS_figure_larvae, dendrogram_fig, 
+                           nrow = 1,  #stack side by side 
+                           rel_heights = c(1, 1))
+
+NMDS_combined_plot
+
+NMDS_combined_plot <- NMDS_combined_plot + theme(plot.margin = margin(2.5, 2.5, 2.5, 2.5, "cm"))
+
+NMDS_combined_plot
+
+##exporting figure
+ggsave("Figure_3.png", plot = NMDS_combined_plot, width = 15, height = 7, units = "in", dpi = 300)
+```
+
+
+## Vibrio (Fig.5)
+
+```{r}
+##transform dataset with all samples to relative abundance
+physeq_rel <- transform_sample_counts(
+  NoChloroNoMito,
+  function(x) x / sum(x))
+
+##subset for just Vibrio 
+vibrio_all <- subset_taxa(
+  physeq_rel,
+  Genus == "g__Vibrio")
+
+##check how many Vibrio ASVs there are across all sample types- 21
+ntaxa(vibrio_all)
+
+##convert to dataframe 
+vibrio_df_all <- psmelt(vibrio_all)
+
+##assign labels for the 21 ASVs
+all_asvs <- sort(unique(vibrio_df_all$OTU))
+asv_lookup <- data.frame(
+  OTU = all_asvs,
+  ASV_number = seq_along(all_asvs),
+  ASV_label = paste("ASV", seq_along(all_asvs)))
+
+##add these labels to the dataframe
+vibrio_df_all <- vibrio_df_all %>%
+  left_join(asv_lookup, by = "OTU")
+
+##calc mean ASV abundance per timepoint and per sample type
+vibrio_summary_all <- vibrio_df_all %>%
+  group_by(Timepoint, SampleType, OTU, ASV_label) %>%
+  summarise(mean_abundance = mean(Abundance), .groups = 'drop')
+
+##filter for ASVs >1.5% at any timepoint in ANY sample type
+vibrio_asvs_to_keep <- vibrio_summary_all %>%
+  filter(mean_abundance > 0.015) %>%
+  pull(OTU) %>%
+  unique()
+
+##look at which ASVs were retained- 8 in total
+kept_asvs <- asv_lookup %>%
+  filter(OTU %in% vibrio_asvs_to_keep)
+print(kept_asvs)
+print(paste("Number of ASVs kept:", nrow(kept_asvs)))
+
+##keep only those ASVs for ALL samples
+vibrio_filtered_all <- vibrio_summary_all %>%
+  filter(OTU %in% vibrio_asvs_to_keep)
+
+##keep only those ASVs for LARVAE only
+vibrio_filtered_larvae <- vibrio_summary_all %>%
+  filter(SampleType == "Larvae" & OTU %in% vibrio_asvs_to_keep)
+
+##add timepoint labels for all sample data
+vibrio_filtered_all <- vibrio_filtered_all %>%
+  mutate(Timepoint_dph = case_when(
+    Timepoint == 1 ~ "2",
+    Timepoint == 2 ~ "5",
+    Timepoint == 3 ~ "8",
+    Timepoint == 4 ~ "13",
+    Timepoint == 5 ~ "20",
+    Timepoint == 6 ~ "36",
+    Timepoint == 7 ~ "55",
+    Timepoint == 8 ~ "76",
+    TRUE ~ NA_character_
+  )) %>%
+  mutate(Timepoint_dph = factor(Timepoint_dph,
+                                 levels = c("2", "5", "8", "13",
+                                           "20", "36", "55", "76")))
+
+##add timepoint labels to larvae only data
+vibrio_filtered_larvae <- vibrio_filtered_larvae %>%
+  mutate(Timepoint_dph = case_when(
+    Timepoint == 1 ~ "2",
+    Timepoint == 2 ~ "5",
+    Timepoint == 3 ~ "8",
+    Timepoint == 4 ~ "13",
+    Timepoint == 5 ~ "20",
+    Timepoint == 6 ~ "36",
+    Timepoint == 7 ~ "55",
+    Timepoint == 8 ~ "76",
+    TRUE ~ NA_character_
+  )) %>%
+  mutate(Timepoint_dph = factor(Timepoint_dph,
+                                 levels = c("2", "5", "8", "13",
+                                           "20", "36", "55", "76")))
+
+##convert ASV_label to factor for both
+vibrio_filtered_all <- vibrio_filtered_all %>%
+  mutate(ASV_label = factor(ASV_label, levels = kept_asvs$ASV_label))
+
+vibrio_filtered_larvae <- vibrio_filtered_larvae %>%
+  mutate(ASV_label = factor(ASV_label, levels = kept_asvs$ASV_label))
+
+##edit names for the diet samples
+vibrio_filtered_all <- vibrio_filtered_all %>%
+  mutate(SampleType = case_when(
+    SampleType == "Food" ~ "Tank Food",  # or whatever you want to call it
+    SampleType == "FoodB" ~ "Food Stock",  # or whatever you want to call it
+    TRUE ~ SampleType  # keeps other sample types unchanged
+  ))
+
+##re-order sample types for figure with all of them
+vibrio_filtered_all <- vibrio_filtered_all %>%
+  mutate(SampleType = factor(SampleType, 
+                              levels = c("Larvae", "Food Stock", "Tank Food", "Water")))
+
+##plot with ALL sample types
+vibrio_ASVs_plot_all <- ggplot(vibrio_filtered_all, 
+                                aes(x = Timepoint_dph, y = mean_abundance, fill = ASV_label)) +
+  geom_col(width = 0.8) +
+  facet_wrap(~ SampleType, nrow = 1) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                     limits = c(0, 1), 
+                     expand = c(0, 0)) +
+  scale_fill_manual(values = NMDS_taxa_color, name = "Vibrio ASV") +
+  labs(x = "Days Post-Hatch (dph)", y = "Relative Abundance (%)") +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.title = element_text(size = 14),
+    legend.title = element_text(face = "bold"),
+    strip.background = element_rect(fill = "white"),
+    strip.text = element_text(face = "bold"))
+
+##plot with LARVAE samples only
+vibrio_ASVs_plot_larvae <- ggplot(vibrio_filtered_larvae, 
+                                   aes(x = Timepoint_dph, y = mean_abundance, fill = ASV_label)) +
+  geom_col(width = 0.8) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                     limits = c(0, 1), 
+                     expand = c(0, 0)) +
+  scale_fill_manual(values = NMDS_taxa_color, name = "Vibrio ASV") +
+  labs(x = "Days Post-Hatch (dph)", y = "Relative Abundance (%)") +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.title = element_text(size = 12),
+    legend.title = element_text(face = "bold"),
+    strip.background = element_rect(fill = "white"),
+    strip.text = element_text(face = "bold"))
+
+vibrio_ASVs_plot_all
+vibrio_ASVs_plot_larvae
+
+##adding margins for export
+vibrio_ASVs_plot_larvae <- vibrio_ASVs_plot_larvae + theme(plot.margin = margin(2.5, 2.5, 2.5, 2.5, "cm"))
+vibrio_ASVs_plot_all <- vibrio_ASVs_plot_all + theme(plot.margin = margin(2.5, 2.5, 2.5, 2.5, "cm"))
+
+##exporting figure
+#ggsave("Figure_5.pdf", plot = vibrio_ASVs_plot_larvae, width = 5, height = 5.5, units = "in", dpi = 300)
+
+#ggsave("Figure_S1.pdf", plot = vibrio_ASVs_plot_all, width = 9.5, height = 5.5, units = "in", dpi = 300)
+
+
+```
+
+
+# Core Community Analysis
+
+```{r}
+
+##define core ASVs: present in ≥75% of samples with ≥0.05% relative abundance
+core_asvs <- core_members(physeq_larvae, 
+                          detection = 0.0005,  # 0.05% as proportion
+                          prevalence = 0.75)   # 75% of samples
+
+##how many core ASVs- 7
+length(core_asvs)
+
+##look at ASV ID for these 7
+print(core_asvs)
+
+##create physeq object with only core ASVs
+physeq_larvae_core <- prune_taxa(core_asvs, physeq_larvae)
+
+##look at taxonomy of core ASVs
+core_tax <- as.data.frame(tax_table(physeq_larvae_core))
+print(core_tax)
+
+```
+
+
+# PERMANOVA Tests
+
+```{r}
+set.seed(123)
+
+##Adonis- timepoint significant 
+CLR_All_Phyto=microbiome::transform(NoChloroNoMito, transform="clr")
+metadata <- as(sample_data(CLR_All_Phyto), "data.frame")
+dist.uf <- phyloseq::distance(CLR_All_Phyto, method = "euclidean")
+ps.adonis <- adonis2(dist.uf ~ Timepoint, data = metadata, perm=999, by="margin")
+ps.adonis
+
+
+##Adonis- SampleType significant 
+ps.adonis <- adonis2(dist.uf ~ SampleType, data = metadata, perm=999, by="margin")
+ps.adonis
+
+
+##now using pairwise.adonis to see direct comparisons 
+##with p-value correction
+ps.adonis <- pairwise.adonis(x = dist.uf, 
+                              factors = metadata$SampleType,
+                              sim.method = "euclidean",
+                              p.adjust.m = "fdr",
+                              perm = 999)
+ps.adonis
+
+
+##without correction
+ps.adonis <- pairwise.adonis(x = dist.uf, 
+                              factors = metadata$SampleType,
+                              sim.method = "euclidean",
+                              p.adjust.m = "none",
+                              perm = 999)
+ps.adonis
+```
+

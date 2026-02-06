@@ -1,0 +1,47 @@
+SampleID,Sample,Plate,Timepoint,SampleType,Timepoint2,Period
+AD.0001,A- 2dph,1A,1,Larvae,One,Early
+AD.0002,B- 2dph,1B,1,Larvae,One,Early
+AD.0003,C- 2dph,1C,1,Larvae,One,Early
+AD.0004,F1- 2dph,1D,1,Food,One,Early
+AD.0005,W1- 2dph,1E,1,Water,One,Early
+AD.0006,A- 5dph,1F,2,Larvae,Two,Early
+AD.0007,B- 5 dph,1G,2,Larvae,Two,Early
+AD.0008,C- 5dph ,1H,2,Larvae,Two,Early
+AD.0009,F1- 5 dph,2A,2,Food,Two,Early
+AD.0010,W1- 5dph,2B,2,Water,Two,Early
+AD.0011,A- 8dph,2C,3,Larvae,Three,Early
+AD.0012,B- 8dph,2D,3,Larvae,Three,Early
+AD.0013,C- 8dph,2E,3,Larvae,Three,Early
+AD.0014,F1- 8dph,2F,3,Food,Three,Early
+AD.0015,F2-8dph,2G,3,FoodB,Three,Early
+AD.0016,W1- 8dph,2H,3,Water,Three,Late
+AD.0017,A- 13dph,3A,4,Larvae,Four,Late
+AD.0018,B- 13dph,3B,4,Larvae,Four,Late
+AD.0019,C- 13dph,3C,4,Larvae,Four,Late
+AD.0020,F1- 13dph,3D,4,Food,Four,Late
+AD.0021,F2-13dph,3E,4,FoodB,Four,Late
+AD.0022,W1- 13dph,3F,4,Water,Four,Late
+AD.0023,A- 20dph,3G,5,Larvae,Five,Late
+AD.0024,B- 20dph,3H,5,Larvae,Five,Late
+AD.0025,C- 20dph,4A,5,Larvae,Five,Late
+AD.0026,F1- 20dph,4B,5,Food,Five,Late
+AD.0027,F2-20dph,4C,5,FoodB,Five,Late
+AD.0028,W1- 20dph,4D,5,Water,Five,Late
+AD.0029,A- 36dph,4E,6,Larvae,Six,Late
+AD.0030,B- 36dph,4F,6,Larvae,Six,Late
+AD.0031,C-36dph,4G,6,Larvae,Six,Late
+AD.0032,F1- 36dph,4H,6,Food,Six,Late
+AD.0033,F2-36dph,5A,6,FoodB,Six,Late
+AD.0034,W1- 36dph,5B,6,Water,Six,Late
+AD.0035,A- 55dph,5C,7,Larvae,Seven,Late
+AD.0036,B- 55dph,5D,7,Larvae,Seven,Late
+AD.0037,C- 55dph,5E,7,Larvae,Seven,Late
+AD.0038,F1- 55dph,5F,7,Food,Seven,Late
+AD.0039,F2-55dph,5G,7,FoodB,Seven,Late
+AD.0040,W1- 55dph,5H,7,Water,Seven ,Late
+AD.0041,A- 75dph,6A,8,Larvae,Eight,Late
+AD.0042,B- 75dph,6B,8,Larvae,Eight,Late
+AD.0043,C-75dph,6C,8,Larvae,Eight,Late
+AD.0044,F1- 75dph,6D,8,Food,Eight,Late
+AD.0045,F2- 75dph,6E,8,FoodB,Eight,Late
+AD.0046,W1- 75dph,6F,8,Water,Eight,Late
