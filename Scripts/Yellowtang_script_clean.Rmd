@@ -277,21 +277,20 @@ phylum_renamed <- phylum_filtered %>%
 
 ##assign colors to each phylum
 phylum_colors_custom <- c(
-  "Proteobacteria" = "#9e9ac8",        # Light purple (dominant)
-  "Bacteroidota" = "#c51b8a",          # Magenta/pink
-  "Actinobacteriota" = "#fa9fb5",      # Light pink
-  "Fusobacteriota" = "#238b45",        # Dark green
-  "Firmicutes" = "#c7e9b4",            # Light green
-  "Planctomycetota" = "#253494",       # Dark blue
-  "Halobacterota" = "#99d8c9",         # Light teal/cyan
-  "Nitrospirota" = "#02818a",          # Teal
-  "Myxococcota" = "#c6dbef",           # Light blue
-  "Crenarchaeota" = "#feb24c",         # Orange
-  "Campilobacterota" = "#fdbb84",      # Light orange
-  "Chloroflexi" = "#ef3b2c",           # Red/orange
-  "Desulfobacterota" = "#cc4c02",      # Brown/orange
-  "Bdellovibrionota" = "#ffffcc"       # Pale yellow
-)
+  "Proteobacteria" = "#9e9ac8",        
+  "Bacteroidota" = "#c51b8a",          
+  "Actinobacteriota" = "#fa9fb5",      
+  "Fusobacteriota" = "#238b45",        
+  "Firmicutes" = "#c7e9b4",            
+  "Planctomycetota" = "#253494",       
+  "Halobacterota" = "#99d8c9",         
+  "Nitrospirota" = "#02818a",          
+  "Myxococcota" = "#c6dbef",           
+  "Crenarchaeota" = "#feb24c",         
+  "Campilobacterota" = "#fdbb84",      
+  "Chloroflexi" = "#ef3b2c",           
+  "Desulfobacterota" = "#cc4c02",     
+  "Bdellovibrionota" = "#ffffcc")
 
 ##add days post-hatch column for labeling and convert to factor so they are in the right order
 phylum_renamed <- phylum_renamed %>%
@@ -435,11 +434,10 @@ genus_colors_custom <- c(
   "Unidentified Sphingobacteriaceae (Family)" = "#54278f",
   "Unidentified Flavobacteriaceae (Family)" = "#8DA0CB",
   "Vibrio" = "#9e9ac8",
-  "Other" = "#bdbdbd"
-)
+  "Other" = "#bdbdbd")
 
 
-## Automatically get all unique genera and put "Other" last
+##get all unique genera and put "Other" last
 all_genera <- setdiff(sort(unique(genus_renamed$Genus_clean)), "Other")
 genus_order <- c(all_genera, "Other")
 
@@ -468,6 +466,7 @@ Treemap_genus_plot
 
 
 ```{r}
+##get summary stats on genus treemap
 genus_table <- genus_renamed %>%
   mutate(Percent = round(mean * 100, 2)) %>%
   select(Timepoint_label, Genus_clean, Percent) %>%
@@ -500,9 +499,7 @@ ggsave("Figure_4.png", plot = Treemap_combined_plot, width = 12, height = 8.5, u
 ```{r}
 ##only larvae first
 ##first subset for just larvae samples
-physeq_larvae <- subset_samples(
-  NoChloroNoMito,
-  SampleType == "Larvae")
+physeq_larvae <- subset_samples(NoChloroNoMito, SampleType == "Larvae")
 
 ##remove ASVs not present in larval samples (0) or very rare to reduce noise
 physeq_larvae <- prune_taxa(taxa_sums(physeq_larvae) > 10, physeq_larvae)
@@ -528,8 +525,7 @@ CLR_larvae_df$Timepoint2 <- case_when(
 ##make timepoint2 a factor and order correctly
 CLR_larvae_df$Timepoint2 <- factor(
   CLR_larvae_df$Timepoint2,
-  levels = c("2", "5", "8", "13",
-    "20", "36", "55", "76"))
+  levels = c("2", "5", "8", "13","20", "36", "55", "76"))
 
 ##convert back to phyloseq object
 sample_data(CLR_larvae) <- CLR_larvae_df
@@ -564,10 +560,10 @@ NMDS_figure_larvae
 
 ```{r}
 ##now all sample types
-#next do CLR transformation
+##transformation
 CLR_all_samples <- microbiome::transform(NoChloroNoMito, transform = "clr")
 
-##convert CLR_larvae to df
+##convert to df
 CLR_all_df <- as(sample_data(CLR_all_samples), "data.frame")
 
 ##fill in Timepoint2 column
@@ -582,16 +578,26 @@ CLR_all_df$Timepoint2 <- case_when(
   CLR_all_df$Timepoint == 8 ~ "76",
   TRUE ~ NA_character_)
 
+##edit names for the diet samples
+CLR_all_df$SampleType <- case_when(
+  CLR_all_df$SampleType == "Food" ~ "Tank Food",
+  CLR_all_df$SampleType == "FoodB" ~ "Food Stock",
+  TRUE ~ CLR_all_df$SampleType)
+
+##make factor and re-order sample types 
+CLR_all_df <- CLR_all_df %>%
+  mutate(SampleType = factor(SampleType, 
+                              levels = c("Larvae", "Food Stock", "Tank Food", "Water")))
+
 ##make timepoint2 a factor and order correctly
 CLR_all_df$Timepoint2 <- factor(
   CLR_all_df$Timepoint2,
-  levels = c("2", "5", "8", "13",
-    "20", "36", "55", "76"))
+  levels = c("2", "5", "8", "13","20", "36", "55", "76"))
 
 ##convert back to phyloseq object
 sample_data(CLR_all_samples) <- CLR_all_df
 
-## 4. NMDS ordination (Euclidean)
+##make NMDS
 set.seed(123)  # for reproducibility
 NMDS_all_ord <- ordinate(
   CLR_all_samples,
@@ -602,6 +608,7 @@ stress_val <- round(NMDS_all_ord$stress, 3)
 
 NMDS_taxa_color = c("#fa9fb5", "#c51b8a", "#ef3b2c", "#feb24c", "yellow4","#02818a", "#1d91c0", "#253494")
 
+##plotting
 NMDS_figure_all <- plot_ordination(CLR_all_samples, NMDS_all_ord, type = "samples", color = "Timepoint2", shape= "SampleType") +
   annotate("text", x = Inf, y = Inf, label = paste0("Stress = ", stress_val),hjust = 1.1, vjust= 1.5, fontface = "bold", size=5) + 
   geom_point(size=4.5) +
@@ -615,11 +622,12 @@ NMDS_figure_all <- plot_ordination(CLR_all_samples, NMDS_all_ord, type = "sample
 
 NMDS_figure_all
 
+##add margins for pub
 NMDS_figure_all <- NMDS_figure_all + theme(plot.margin = margin(4, 2.5, 2.5, 2.5, "cm"))
 
 NMDS_figure_all
 
-ggsave("Figure_S1.pdf", plot = NMDS_figure_all, width = 10, height = 8, units = "in", dpi = 300)
+#ggsave("Figure_S2.pdf", plot = NMDS_figure_all, width = 10, height = 8, units = "in", dpi = 300)
 
 ```
 
@@ -630,9 +638,7 @@ ggsave("Figure_S1.pdf", plot = NMDS_figure_all, width = 10, height = 8, units = 
 ##starting with CLR transformed larvae only dataframe made in NMDS chunk above (CLR_larvae)
 
 ##first subset for just larvae samples
-physeq_larvae <- subset_samples(
-  NoChloroNoMito,
-  SampleType == "Larvae")
+physeq_larvae <- subset_samples(NoChloroNoMito,SampleType == "Larvae")
 
 #1,511 ASVs
 ntaxa(physeq_larvae)
@@ -665,7 +671,6 @@ shc_result_larvae$p_norm[1]
 ```{r}
 library(dendextend)
 
-# Your existing code
 CLR_larvae <- microbiome::transform(physeq_larvae_filtered, transform = "clr")
 otutable_shc_larvae <- as.matrix(as.data.frame(t(otu_table(CLR_larvae))))
 shc_result_larvae <- shc(otutable_shc_larvae, metric="euclidean", linkage="ward.D2", n_min=10)
@@ -703,7 +708,7 @@ NMDS_combined_plot <- NMDS_combined_plot + theme(plot.margin = margin(2.5, 2.5, 
 NMDS_combined_plot
 
 ##exporting figure
-ggsave("Figure_3.png", plot = NMDS_combined_plot, width = 15, height = 7, units = "in", dpi = 300)
+#ggsave("Figure_3.png", plot = NMDS_combined_plot, width = 15, height = 7, units = "in", dpi = 300)
 ```
 
 
@@ -773,11 +778,8 @@ vibrio_filtered_all <- vibrio_filtered_all %>%
     Timepoint == 6 ~ "36",
     Timepoint == 7 ~ "55",
     Timepoint == 8 ~ "76",
-    TRUE ~ NA_character_
-  )) %>%
-  mutate(Timepoint_dph = factor(Timepoint_dph,
-                                 levels = c("2", "5", "8", "13",
-                                           "20", "36", "55", "76")))
+    TRUE ~ NA_character_ )) %>% mutate(Timepoint_dph = factor(Timepoint_dph,
+                                 levels = c("2", "5", "8", "13","20", "36", "55", "76")))
 
 ##add timepoint labels to larvae only data
 vibrio_filtered_larvae <- vibrio_filtered_larvae %>%
@@ -790,11 +792,8 @@ vibrio_filtered_larvae <- vibrio_filtered_larvae %>%
     Timepoint == 6 ~ "36",
     Timepoint == 7 ~ "55",
     Timepoint == 8 ~ "76",
-    TRUE ~ NA_character_
-  )) %>%
-  mutate(Timepoint_dph = factor(Timepoint_dph,
-                                 levels = c("2", "5", "8", "13",
-                                           "20", "36", "55", "76")))
+    TRUE ~ NA_character_ )) %>%
+  mutate(Timepoint_dph = factor(Timepoint_dph,levels = c("2", "5", "8", "13","20", "36", "55", "76")))
 
 ##convert ASV_label to factor for both
 vibrio_filtered_all <- vibrio_filtered_all %>%
@@ -808,8 +807,7 @@ vibrio_filtered_all <- vibrio_filtered_all %>%
   mutate(SampleType = case_when(
     SampleType == "Food" ~ "Tank Food",  # or whatever you want to call it
     SampleType == "FoodB" ~ "Food Stock",  # or whatever you want to call it
-    TRUE ~ SampleType  # keeps other sample types unchanged
-  ))
+    TRUE ~ SampleType))
 
 ##re-order sample types for figure with all of them
 vibrio_filtered_all <- vibrio_filtered_all %>%
