@@ -14,13 +14,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 # load packages
-pacman::p_load(ggplot2, phyloseq, treemapify, tidyverse, dplyr, vegan, sigclust2, dendextend, pairwiseAdonis, patchwork, cowplot, microbiome)
+pacman::p_load(here,ggplot2, phyloseq, treemapify, tidyverse, dplyr, vegan, sigclust2, dendextend, pairwiseAdonis, patchwork, cowplot, microbiome)
 
 ```
 
 ```{r}
-# set working director
-setwd("~/Desktop/Chapter3_data/Ch3_highread_all")
+#double check path
+here()
 ```
 
 # Script Set-Up
@@ -29,25 +29,23 @@ setwd("~/Desktop/Chapter3_data/Ch3_highread_all")
 ##bring in data 
 
 ##ASV (feature) table
-asv_table_ch3 = read.csv("feature-table.csv", sep=",", row.names=1)
-asv_table_ch3 = as.matrix(asv_table_ch3)
+asv_table_ch3 <- read.csv(here("Data", "feature-table.csv"), sep = ",", row.names = 1)
+asv_table_ch3 <- as.matrix(asv_table_ch3)
 
 ##Taxonomy 
-Taxonomy_table_ch3 = read.csv("taxonomy.csv", sep=",", row.names=1)
-Taxonomy_table_ch3 = as.matrix(Taxonomy_table_ch3)
-
+Taxonomy_table_ch3 <- read.csv(here("Data", "taxonomy.csv"), sep = ",", row.names = 1)
+Taxonomy_table_ch3 <- as.matrix(Taxonomy_table_ch3)
                   
 ##Metadata
 ##fill=TRUE fills character fields with empty strings instead of NAs
 ##header=TRUE tells R that the first row of the file contains the variable names 
-Metadata_table_ch3 = read.csv("Ch3Metadata.csv", header=TRUE, fill=TRUE)
-
+Metadata_table_ch3 <- read.csv(here("Data", "Ch3Metadata.csv"), header = TRUE, fill = TRUE)
 ##takes first column and makes it the row name
 rownames(Metadata_table_ch3) <- Metadata_table_ch3$SampleID
 Metadata_table_ch3$SampleID
 
 ##Tree
-phy_tree = read_tree("tree.nwk")
+phy_tree <- read_tree(here("Data", "tree.nwk"))
 ```
 
 ```{r}
