@@ -40,6 +40,7 @@ Taxonomy_table_ch3 <- as.matrix(Taxonomy_table_ch3)
 ##fill=TRUE fills character fields with empty strings instead of NAs
 ##header=TRUE tells R that the first row of the file contains the variable names 
 Metadata_table_ch3 <- read.csv(here("Data", "Ch3Metadata.csv"), header = TRUE, fill = TRUE)
+
 ##takes first column and makes it the row name
 rownames(Metadata_table_ch3) <- Metadata_table_ch3$SampleID
 Metadata_table_ch3$SampleID
@@ -116,7 +117,7 @@ Taxonomy_table_ch3 <- data.frame(tax_table(physeq_ch3_cleaned))
 ##Now cleaning taxonomy names (many ASVs are unassigned at the lower taxonomic levels)
 
 
-##using taxonomy table we pulled out above (Taxonomy_table_ch3
+##using taxonomy table we pulled out above (Taxonomy_table_ch3)
 ##change columns to characters
 for (i in 1:8){ Taxonomy_table_ch3[,i] <- as.character(Taxonomy_table_ch3[,i])}
 
@@ -635,8 +636,6 @@ NMDS_figure_all
 ## Dendrogram (Fig. 3B)
 
 ```{r}
-##starting with CLR transformed larvae only dataframe made in NMDS chunk above (CLR_larvae)
-
 ##first subset for just larvae samples
 physeq_larvae <- subset_samples(NoChloroNoMito,SampleType == "Larvae")
 
@@ -663,17 +662,14 @@ dendrogram_fig <-plot(shc_result_larvae)
 
 dendrogram_fig
 
-##look at p-value
+##look at p-value of first branch 
 shc_result_larvae$p_norm[1]
 
 ```
 
 ```{r}
-library(dendextend)
+##re-ordering samples on dendrogram figure
 
-CLR_larvae <- microbiome::transform(physeq_larvae_filtered, transform = "clr")
-otutable_shc_larvae <- as.matrix(as.data.frame(t(otu_table(CLR_larvae))))
-shc_result_larvae <- shc(otutable_shc_larvae, metric="euclidean", linkage="ward.D2", n_min=10)
 
 # Extract the hclust object from shc result
 hc <- shc_result_larvae$hc_dat
@@ -715,9 +711,15 @@ NMDS_combined_plot
 ## Vibrio (Fig.5)
 
 ```{r}
+##remove ASVs with zero counts across all samples (removes ASVs filtered from feature table but not tax table)
+NoChloroNoMito_pruned <- prune_taxa(taxa_sums(NoChloroNoMito) > 0, NoChloroNoMito)
+ntaxa(NoChloroNoMito_pruned)
+
+tax_df <- as.data.frame(tax_table(NoChloroNoMito))
+
 ##transform dataset with all samples to relative abundance
 physeq_rel <- transform_sample_counts(
-  NoChloroNoMito,
+  NoChloroNoMito_pruned,
   function(x) x / sum(x))
 
 ##subset for just Vibrio 
