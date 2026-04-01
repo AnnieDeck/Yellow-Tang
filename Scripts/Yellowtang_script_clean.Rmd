@@ -92,7 +92,7 @@ table(tax_table(physeq_ch3_cleaned_domain)[, "Domain"], exclude = NULL)
 #now look at all phylums
 table(tax_table(physeq_ch3_meta)[, "Phylum"], exclude = NULL)
 
-##now checking looking at # of ASVs (1,738) & # of unique phyla (24)
+##now looking at # of ASVs (1,738) & # of unique phyla (24)
 physeq_phyla <- tax_glom(physeq_ch3_cleaned_domain, taxrank= "ASV_ID_2")
 ntaxa(physeq_phyla)
 
@@ -241,15 +241,14 @@ length(unique(na.omit(tax_table(NoChloroNoMito)[, "Genus"])))
 phylum_glom <- tax_glom(rel_abundances, taxrank = "Phylum")
 
 ##melt and summarize by sample 
-phylum_summary <- phylum_glom %>% 
-  psmelt() %>% 
-  filter(SampleType == "Larvae") %>%  # Filter for larvae only
+phylum_summary <- phylum_glom %>% psmelt() %>% 
+  filter(SampleType == "Larvae") %>%  #larvae only
   group_by(SampleID, Timepoint, Phylum) %>% 
   summarise(sum = sum(Abundance), .groups = 'drop')
 
 ##calc mean abundance across replicates (n=3) for each timepoint
 phylum_mean <- phylum_summary %>% 
-  group_by(Timepoint, Phylum) %>%  # Removed SampleType since we only have Larvae
+  group_by(Timepoint, Phylum) %>%  
   summarise(mean = mean(sum), .groups = 'drop')
 
 ##filter for phyla >1% relative abundance
@@ -273,8 +272,7 @@ phylum_renamed <- phylum_filtered %>%
     Phylum == "p__Nitrospirota" ~ "Nitrospirota",
     Phylum == "p__Planctomycetota" ~ "Planctomycetota",
     Phylum == "p__Proteobacteria" ~ "Proteobacteria",
-    TRUE ~ Phylum  # Keep original if not matched
-  ))
+    TRUE ~ Phylum)) #keep original if not matched
 
 ##assign colors to each phylum
 phylum_colors_custom <- c(
@@ -304,8 +302,7 @@ phylum_renamed <- phylum_renamed %>%
     Timepoint == 6 ~ "36 dph",
     Timepoint == 7 ~ "55 dph",
     Timepoint == 8 ~ "76 dph",
-    TRUE ~ as.character(Timepoint)
-  )) %>%
+    TRUE ~ as.character(Timepoint) )) %>%
   mutate(Timepoint_label = factor(Timepoint_label, 
                                    levels = c("2 dph", "5 dph", "8 dph", "13 dph", 
                                              "20 dph", "36 dph", "55 dph", "76 dph")))
@@ -345,31 +342,31 @@ print(phylum_table)
 ## Now repeating at the Genus level 
 ## this code will take the genera that are >3% of the mean relative abundance at each timepoint and put the rest into an "other" category
 
-## Treemap data prep - aggregate to Genus level
+##treemap data prep - aggregate to Genus level
 genus_glom <- tax_glom(rel_abundances, taxrank = "Genus")
 
-## Melt and summarize by sample
+##melt and summarize by sample
 genus_summary <- genus_glom %>% 
   psmelt() %>% 
   filter(SampleType == "Larvae") %>%
   group_by(SampleID, Timepoint, Genus) %>% 
   summarise(sum = sum(Abundance), .groups = 'drop')
 
-## Calculate mean abundance across replicates for each timepoint
+##calculate mean abundance across replicates for each timepoint
 genus_mean <- genus_summary %>% 
   group_by(Timepoint, Genus) %>%
   summarise(mean = mean(sum), .groups = 'drop')
 
-## Filter per timepoint: keep if >3% at THAT timepoint, otherwise "Other"
+##filter per timepoint: keep if >3% at THAT timepoint, otherwise "Other"
 genus_categorized <- genus_mean %>%
   mutate(Genus_category = ifelse(mean > 0.03, Genus, "Other"))
 
-## Sum up all "Other" genera by timepoint
+##sum up all "Other" genera by timepoint
 genus_final <- genus_categorized %>%
   group_by(Timepoint, Genus_category) %>%
   summarise(mean = sum(mean), .groups = 'drop')
 
-## Clean up genus names with custom labels
+##make names prettier 
 genus_renamed <- genus_final %>%
   mutate(Genus_clean = case_when(
     Genus_category == "g__Alteromonas" ~ "Alteromonas",
@@ -490,7 +487,7 @@ Treemap_combined_plot <- Treemap_combined_plot + theme(plot.margin = margin(4, 2
 Treemap_combined_plot
 
 ##exporting figure
-ggsave("Figure_4.png", plot = Treemap_combined_plot, width = 12, height = 8.5, units = "in", dpi = 300)
+#ggsave("Figure_4.png", plot = Treemap_combined_plot, width = 12, height = 8.5, units = "in", dpi = 300)
 ```
 
 
@@ -524,30 +521,24 @@ CLR_larvae_df$Timepoint2 <- case_when(
   TRUE ~ NA_character_)
 
 ##make timepoint2 a factor and order correctly
-CLR_larvae_df$Timepoint2 <- factor(
-  CLR_larvae_df$Timepoint2,
-  levels = c("2", "5", "8", "13","20", "36", "55", "76"))
+CLR_larvae_df$Timepoint2 <- factor(CLR_larvae_df$Timepoint2, 
+                                   levels = c("2", "5", "8", "13","20", "36", "55", "76"))
 
 ##convert back to phyloseq object
 sample_data(CLR_larvae) <- CLR_larvae_df
 
-## 4. NMDS ordination (Euclidean)
-set.seed(123)  # for reproducibility
-NMDS_larvae_ord <- ordinate(
-  CLR_larvae,
-  method = "NMDS",
-  distance = "euclidean"
-)
+##NMDS ordination 
+set.seed(123)  #for reproducibility
+NMDS_larvae_ord <- ordinate(CLR_larvae, method = "NMDS",distance = "euclidean")
 
 stress_val <- round(NMDS_larvae_ord$stress, 3)
 
 NMDS_taxa_color = c("#fa9fb5", "#c51b8a", "#ef3b2c", "#feb24c", "yellow4","#02818a", "#1d91c0", "#253494")
 
-NMDS_figure_larvae <- plot_ordination(CLR_larvae, NMDS_larvae_ord, type = "samples", color = "Timepoint2") +
-  annotate("text", x = Inf, y = Inf, label = paste0("Stress = ", stress_val),hjust = 1.1, vjust= 1.5, fontface = "bold", size=5) + 
-  geom_point(size=4.2) +
-  scale_color_manual(values = NMDS_taxa_color, name= "Days Post-Hatch (dph)") +
-  theme_bw() +
+##plotting
+NMDS_figure_larvae <- plot_ordination(CLR_larvae, NMDS_larvae_ord, type = "samples", color = "Timepoint2") + annotate("text", x = Inf, y = Inf, label = paste0("Stress = ", stress_val),hjust = 1.1, vjust= 1.5, fontface = "bold", size=5) + 
+  geom_point(size=4.2) + scale_color_manual(values = NMDS_taxa_color, name= "Days Post-Hatch (dph)") + 
+  theme_bw() + 
   theme(
     axis.title = element_text(size = 12),
     legend.title = element_text(size = 13),
@@ -580,30 +571,24 @@ CLR_all_df$Timepoint2 <- case_when(
   TRUE ~ NA_character_)
 
 ##edit names for the diet samples
-CLR_all_df$SampleType <- case_when(
-  CLR_all_df$SampleType == "Food" ~ "Tank Food",
-  CLR_all_df$SampleType == "FoodB" ~ "Food Stock",
-  TRUE ~ CLR_all_df$SampleType)
+CLR_all_df$SampleType <- case_when(CLR_all_df$SampleType == "Food" ~ "Tank Food", 
+                                   CLR_all_df$SampleType == "FoodB" ~ "Food Stock", 
+                                   TRUE ~ CLR_all_df$SampleType)
 
 ##make factor and re-order sample types 
-CLR_all_df <- CLR_all_df %>%
-  mutate(SampleType = factor(SampleType, 
-                              levels = c("Larvae", "Food Stock", "Tank Food", "Water")))
+CLR_all_df <- CLR_all_df %>% mutate(SampleType = factor(SampleType, 
+                                                        levels = c("Larvae", "Food Stock", "Tank Food", "Water")))
 
 ##make timepoint2 a factor and order correctly
-CLR_all_df$Timepoint2 <- factor(
-  CLR_all_df$Timepoint2,
-  levels = c("2", "5", "8", "13","20", "36", "55", "76"))
+CLR_all_df$Timepoint2 <- factor(CLR_all_df$Timepoint2, 
+                                levels = c("2", "5", "8", "13","20", "36", "55", "76"))
 
 ##convert back to phyloseq object
 sample_data(CLR_all_samples) <- CLR_all_df
 
 ##make NMDS
 set.seed(123)  # for reproducibility
-NMDS_all_ord <- ordinate(
-  CLR_all_samples,
-  method = "NMDS",
-  distance = "euclidean")
+NMDS_all_ord <- ordinate(CLR_all_samples, method = "NMDS", distance = "euclidean")
 
 stress_val <- round(NMDS_all_ord$stress, 3)
 
@@ -640,7 +625,7 @@ NMDS_figure_all
 physeq_larvae <- subset_samples(NoChloroNoMito,SampleType == "Larvae")
 
 #1,511 ASVs
-ntaxa(physeq_larvae)
+ntaxa(physeq_larvae) 
 
 ##remove ASVs not present in larval samples (0) or very rare to reduce noise (same as I did above with NMDS)
 physeq_larvae_filtered <- prune_taxa(taxa_sums(physeq_larvae) > 10, physeq_larvae)
@@ -694,8 +679,8 @@ dendrogram_fig
 ```{r}
 ##combine NMDS & dendrogram into one figure 
 NMDS_combined_plot <- plot_grid(NMDS_figure_larvae, dendrogram_fig, 
-                           nrow = 1,  #stack side by side 
-                           rel_heights = c(1, 1))
+                                nrow = 1,  #stack side by side 
+                                rel_heights = c(1, 1))
 
 NMDS_combined_plot
 
@@ -718,14 +703,10 @@ ntaxa(NoChloroNoMito_pruned)
 tax_df <- as.data.frame(tax_table(NoChloroNoMito))
 
 ##transform dataset with all samples to relative abundance
-physeq_rel <- transform_sample_counts(
-  NoChloroNoMito_pruned,
-  function(x) x / sum(x))
+physeq_rel <- transform_sample_counts(NoChloroNoMito_pruned, function(x) x / sum(x))
 
 ##subset for just Vibrio 
-vibrio_all <- subset_taxa(
-  physeq_rel,
-  Genus == "g__Vibrio")
+vibrio_all <- subset_taxa(physeq_rel, Genus == "g__Vibrio")
 
 ##check how many Vibrio ASVs there are across all sample types- 21
 ntaxa(vibrio_all)
@@ -735,29 +716,27 @@ vibrio_df_all <- psmelt(vibrio_all)
 
 ##assign labels for the 21 ASVs
 all_asvs <- sort(unique(vibrio_df_all$OTU))
-asv_lookup <- data.frame(
-  OTU = all_asvs,
-  ASV_number = seq_along(all_asvs),
-  ASV_label = paste("ASV", seq_along(all_asvs)))
+asv_lookup <- data.frame(OTU = all_asvs, ASV_number = seq_along(all_asvs), ASV_label = paste("ASV", seq_along(all_asvs)))
 
 ##add these labels to the dataframe
 vibrio_df_all <- vibrio_df_all %>%
   left_join(asv_lookup, by = "OTU")
 
 ##calc mean ASV abundance per timepoint and per sample type
-vibrio_summary_all <- vibrio_df_all %>%
-  group_by(Timepoint, SampleType, OTU, ASV_label) %>%
+vibrio_summary_all <- vibrio_df_all %>% 
+  group_by(Timepoint, SampleType, OTU, ASV_label) %>% 
   summarise(mean_abundance = mean(Abundance), .groups = 'drop')
 
 ##filter for ASVs >1.5% at any timepoint in ANY sample type
-vibrio_asvs_to_keep <- vibrio_summary_all %>%
-  filter(mean_abundance > 0.015) %>%
-  pull(OTU) %>%
+vibrio_asvs_to_keep <- vibrio_summary_all %>% 
+  filter(mean_abundance > 0.015) %>% 
+  pull(OTU) %>% 
   unique()
 
 ##look at which ASVs were retained- 8 in total
 kept_asvs <- asv_lookup %>%
   filter(OTU %in% vibrio_asvs_to_keep)
+
 print(kept_asvs)
 print(paste("Number of ASVs kept:", nrow(kept_asvs)))
 
@@ -784,7 +763,7 @@ vibrio_filtered_all <- vibrio_filtered_all %>%
                                  levels = c("2", "5", "8", "13","20", "36", "55", "76")))
 
 ##add timepoint labels to larvae only data
-vibrio_filtered_larvae <- vibrio_filtered_larvae %>%
+vibrio_filtered_larvae <- vibrio_filtered_larvae %>% 
   mutate(Timepoint_dph = case_when(
     Timepoint == 1 ~ "2",
     Timepoint == 2 ~ "5",
@@ -813,8 +792,7 @@ vibrio_filtered_all <- vibrio_filtered_all %>%
 
 ##re-order sample types for figure with all of them
 vibrio_filtered_all <- vibrio_filtered_all %>%
-  mutate(SampleType = factor(SampleType, 
-                              levels = c("Larvae", "Food Stock", "Tank Food", "Water")))
+  mutate(SampleType = factor(SampleType, levels = c("Larvae", "Food Stock", "Tank Food", "Water")))
 
 ##plot with ALL sample types
 vibrio_ASVs_plot_all <- ggplot(vibrio_filtered_all, 
@@ -835,10 +813,8 @@ vibrio_ASVs_plot_all <- ggplot(vibrio_filtered_all,
     strip.text = element_text(face = "bold"))
 
 ##plot with LARVAE samples only
-vibrio_ASVs_plot_larvae <- ggplot(vibrio_filtered_larvae, 
-                                   aes(x = Timepoint_dph, y = mean_abundance, fill = ASV_label)) +
-  geom_col(width = 0.8) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+vibrio_ASVs_plot_larvae <- ggplot(vibrio_filtered_larvae, aes(x = Timepoint_dph, y = mean_abundance, fill = ASV_label)) +
+  geom_col(width = 0.8) + scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
                      limits = c(0, 1), 
                      expand = c(0, 0)) +
   scale_fill_manual(values = NMDS_taxa_color, name = "Vibrio ASV") +
@@ -873,8 +849,8 @@ vibrio_ASVs_plot_all <- vibrio_ASVs_plot_all + theme(plot.margin = margin(2.5, 2
 
 ##define core ASVs: present in ≥75% of samples with ≥0.05% relative abundance
 core_asvs <- core_members(physeq_larvae, 
-                          detection = 0.0005,  # 0.05% as proportion
-                          prevalence = 0.75)   # 75% of samples
+                          detection = 0.0005,  
+                          prevalence = 0.75)   
 
 ##how many core ASVs- 7
 length(core_asvs)
