@@ -481,6 +481,8 @@ Treemap_combined_plot <- plot_grid(Treemap_phylum_plot, Treemap_genus_plot,
                            rel_heights = c(1, 1.12))
 
 Treemap_combined_plot
+ggsave("Figure_4.pdf", plot = Treemap_combined_plot, width = 12, height = 6.5, units = "in")
+
 
 Treemap_combined_plot <- Treemap_combined_plot + theme(plot.margin = margin(4, 2.5, 2.5, 2.5, "cm"))
 
@@ -880,10 +882,20 @@ dist.uf <- phyloseq::distance(CLR_All_Phyto, method = "euclidean")
 ps.adonis <- adonis2(dist.uf ~ Timepoint, data = metadata, perm=999, by="margin")
 ps.adonis
 
+##testing homogeneity of group dispersion for timepoint- significant
+mod <- betadisper(dist.uf, metadata$Timepoint)
+mod
+anova(mod)
+
 
 ##Adonis- SampleType significant 
 ps.adonis <- adonis2(dist.uf ~ SampleType, data = metadata, perm=999, by="margin")
 ps.adonis
+
+##testing homogeneity of group dispersion for sample type- not significant 
+mod <- betadisper(dist.uf, metadata$SampleType)
+mod
+anova(mod)
 
 
 ##now using pairwise.adonis to see direct comparisons 
